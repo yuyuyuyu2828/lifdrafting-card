@@ -1,36 +1,46 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 人生ドラフト (Life Draft Card Game) — Web Simulator
 
-## Getting Started
+3〜6人で集まり、人生の選択や習慣をドラフトしながら、お互いの未来を語り合い、賞を贈り合うカードゲームのWebシミュレーター。
 
-First, run the development server:
+## 🎴 ゲームの流れ
+
+1. **未来カードドラフト** — 配られた未来カードから3枚を選ぶ
+2. **プレゼン** — 1人1〜2分で「私はこんな未来を目指す」を語る
+3. **受賞投票** — 8つの賞をお互いに投票で贈り合う
+4. **習慣カードドラフト** — 未来に近づくための習慣を3枚選ぶ
+5. **エッジマップワーク** — Kegan & Lahey の Immunity to Change を参考にした自己理解ワーク
+6. **サマリー** — 全員の選択を振り返り、明日のステップを宣言
+
+## 💻 開発
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+→ `http://localhost:3000` で確認
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 🚀 デプロイ
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+このプロジェクトは [Vercel](https://vercel.com) にデプロイされています。
 
-## Learn More
+## 🛠 技術
 
-To learn more about Next.js, take a look at the following resources:
+- Next.js 16 (App Router)
+- TypeScript
+- Tailwind CSS
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 📦 カード構成
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- 未来カード 48枚（6カテゴリ）
+- 習慣カード 49枚（7カテゴリ）
+- エッジカード 20枚（10系統）
+- 受賞カード 8枚（3pt×3、2pt×3、1pt×2）
 
-## Deploy on Vercel
+## 📄 出典
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+エッジマップワークは Robert Kegan & Lisa Lahey, *Immunity to Change* (Harvard Business Review Press, 2009) の研究を参考に独自構成しています。
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---
+
+© Color Variation

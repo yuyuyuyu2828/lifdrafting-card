@@ -4,17 +4,18 @@ import { useState } from 'react';
 import {
   FUTURE_CARDS, HABIT_CARDS, EDGE_CARDS, AWARD_CARDS,
   FUTURE_CAT_LABEL, HABIT_CAT_LABEL, FUTURE_CAT_COLOR, HABIT_CAT_COLOR,
+  FUTURE_CAT_TONE,
   TIER_POINTS, shuffle,
-  FutureCard, HabitCard, EdgeCard, AwardCard,
+  FutureCard, HabitCard, EdgeCard, AwardCard, FutureCategory,
 } from '@/lib/cards';
 
 // ============= CONSTANTS =============
 const NPC_NAMES = ['ハル', 'ミナ', 'ケン'];
 const HUMAN_IDX = 0;
-const N_PLAYERS = 1 + NPC_NAMES.length; // 4
+const N_PLAYERS = 1 + NPC_NAMES.length;
 const FUTURE_ROUNDS = 3;
 const FUTURE_SUBROUNDS = 3;
-const FUTURE_NARROW = 5; // 9 → 5
+const FUTURE_NARROW = 5;
 const HABIT_PICKS = 3;
 const EDGE_PICK_MAX = 3;
 
@@ -32,23 +33,23 @@ type Phase =
 type Player = {
   name: string;
   isNPC: boolean;
-  futureDraft: FutureCard[]; // 9
-  futureHand: FutureCard[]; // narrowed 5
-  habitHand: HabitCard[]; // 3
+  futureDraft: FutureCard[];
+  futureHand: FutureCard[];
+  habitHand: HabitCard[];
   edgeMap: { col1: string; col2: string; col3: string; col4: string; next: string };
   edges: EdgeCard[];
 };
 
 type FutureDraftState = {
-  round: number; // 1..3
-  subRound: number; // 1..3
-  hands: FutureCard[][]; // current hand per player
-  picks: FutureCard[][]; // accumulated this game
+  round: number;
+  subRound: number;
+  hands: FutureCard[][];
+  picks: FutureCard[][];
   deck: FutureCard[];
 };
 
 type HabitDraftState = {
-  subRound: number; // 1..3
+  subRound: number;
   hands: HabitCard[][];
   picks: HabitCard[][];
 };
@@ -58,6 +59,29 @@ type AwardResult = {
   winner: string | null;
   votes: Record<string, number>;
 };
+
+// ============= NPC PRESENTATION TEMPLATES =============
+const PRESENT_TEMPLATES = [
+  '私が選んだ未来は{names}。中でも『{star}』に強く惹かれます。{tone}、そんな人生を目指していきたい。',
+  '今の自分に響いたのは{names}でした。『{star}』を起点に、{tone}という方向に進みたい。',
+  '{names}を選びました。共通するのは{tone}という願い。『{star}』はその象徴的な1枚です。',
+  '{names}を手元に残しました。{tone}という方向性。『{star}』はきっと、自分でもまだ言葉にできない理由で惹かれています。',
+];
+
+function generatePresentation(cards: FutureCard[], seed: number): string {
+  if (cards.length === 0) return '';
+  // dominant category
+  const catCounts: Partial<Record<FutureCategory, number>> = {};
+  cards.forEach((c) => {
+    catCounts[c.cat] = (catCounts[c.cat] || 0) + 1;
+  });
+  const dominantCat = Object.entries(catCounts).sort((a, b) => (b[1] as number) - (a[1] as number))[0][0] as FutureCategory;
+  const tone = FUTURE_CAT_TONE[dominantCat];
+  const names = cards.map((c) => `『${c.name}』`).join('、');
+  const star = cards[seed % cards.length].name;
+  const tpl = PRESENT_TEMPLATES[seed % PRESENT_TEMPLATES.length];
+  return tpl.replace('{names}', names).replace('{star}', star).replace('{tone}', tone);
+}
 
 // ============= HELPERS =============
 function newDraftState(deck: FutureCard[]): FutureDraftState {
@@ -85,22 +109,19 @@ function newHabitState(): HabitDraftState {
   };
 }
 
-// Process one sub-round: human picks, NPCs auto-pick, then pass right (i → i+1)
 function processSubRound<T>(
   hands: T[][],
   picks: T[][],
   humanPickIdx: number
-): { newHands: T[][]; newPicks: T[][]; leftovers: T[][] } {
-  // determine pick index per player
+): { newHands: T[][]; newPicks: T[][] } {
   const pickIndices = hands.map((h, i) =>
     i === HUMAN_IDX ? humanPickIdx : Math.floor(Math.random() * h.length)
   );
   const newPicks = picks.map((p, i) => [...p, hands[i][pickIndices[i]]]);
   const remaining = hands.map((h, i) => h.filter((_, idx) => idx !== pickIndices[i]));
-  // pass to right (i → i+1), so player i receives from (i-1)
   const N = hands.length;
   const newHands = remaining.map((_, i) => remaining[(i - 1 + N) % N]);
-  return { newHands, newPicks, leftovers: [] };
+  return { newHands, newPicks };
 }
 
 // ============= MAIN COMPONENT =============
@@ -135,7 +156,6 @@ export default function Page() {
     setPhase('futureIntro');
   };
 
-  // ============= FUTURE DRAFT LOGIC =============
   const startFutureDraft = () => {
     setFutureDraftState(newDraftState(FUTURE_CARDS));
     setPhase('futureDraft');
@@ -150,7 +170,6 @@ export default function Page() {
     );
 
     if (futureDraftState.subRound < FUTURE_SUBROUNDS) {
-      // continue same round
       setFutureDraftState({
         ...futureDraftState,
         hands: newHands,
@@ -158,12 +177,9 @@ export default function Page() {
         subRound: futureDraftState.subRound + 1,
       });
     } else {
-      // end of round
       if (futureDraftState.round < FUTURE_ROUNDS) {
-        // discard remaining (newHands has each player's leftover 2 cards), push back to deck, shuffle
         const discards = newHands.flat();
         const newDeck = shuffle([...futureDraftState.deck, ...discards]);
-        // deal next round
         const dealHands = Array.from({ length: N_PLAYERS }, (_, i) =>
           newDeck.slice(i * 5, i * 5 + 5)
         );
@@ -176,7 +192,6 @@ export default function Page() {
           deck: newDeck.slice(N_PLAYERS * 5),
         });
       } else {
-        // all 3 rounds done: each player has 9 picks
         setPlayers((prev) =>
           prev.map((p, i) => ({ ...p, futureDraft: newPicks[i] }))
         );
@@ -192,7 +207,6 @@ export default function Page() {
         if (i === HUMAN_IDX) {
           return { ...p, futureHand: p.futureDraft.filter((c) => selectedCodes.includes(c.code)) };
         } else {
-          // NPC picks 5 random from their 9
           const shuffled = shuffle(p.futureDraft);
           return { ...p, futureHand: shuffled.slice(0, FUTURE_NARROW) };
         }
@@ -201,7 +215,6 @@ export default function Page() {
     setPhase('futureReveal');
   };
 
-  // ============= HABIT DRAFT LOGIC =============
   const startHabitDraft = () => {
     setHabitDraftState(newHabitState());
     setPhase('habitDraft');
@@ -223,16 +236,13 @@ export default function Page() {
         subRound: habitDraftState.subRound + 1,
       });
     } else {
-      // done — each player has 3 picks
       setPlayers((prev) => prev.map((p, i) => ({ ...p, habitHand: newPicks[i] })));
       setHabitDraftState(null);
       setPhase('habitReveal');
     }
   };
 
-  // ============= VOTING LOGIC =============
   const handleVote = (humanVotedFor: string) => {
-    // tally: human + NPCs random
     const votes: Record<string, number> = {};
     players.forEach((p, i) => {
       const voted = i === HUMAN_IDX
@@ -256,7 +266,6 @@ export default function Page() {
     }
   };
 
-  // ============= RENDER =============
   return (
     <main className="min-h-screen bg-gradient-to-br from-amber-50 via-rose-50 to-sky-50 p-4 md:p-8">
       <div className="max-w-5xl mx-auto">
@@ -267,8 +276,8 @@ export default function Page() {
           <StepIntro
             stepNum={1}
             title="未来カードドラフト"
-            subtitle={`3ラウンドで9枚をドラフト → 5枚に絞る`}
-            description={`各ラウンドで5枚配布→1枚選んで右隣に残りを渡す、を3回繰り返して3枚獲得。これを3ラウンド行って合計9枚を集めます。最後に「特に実現したい5枚」に絞り込んでください。`}
+            subtitle="3ラウンドで9枚をドラフト → 5枚に絞る"
+            description="各ラウンドで5枚配布→1枚選んで右隣に残りを渡す、を3回繰り返して3枚獲得。これを3ラウンド行って合計9枚を集めます。最後に「特に実現したい5枚」に絞り込んでください。"
             onStart={startFutureDraft}
             color="from-rose-400 to-orange-400"
           />
@@ -277,7 +286,6 @@ export default function Page() {
         {phase === 'futureDraft' && futureDraftState && (
           <FutureDraftStage
             state={futureDraftState}
-            players={players}
             onPick={handleFuturePick}
           />
         )}
@@ -342,8 +350,8 @@ export default function Page() {
           <StepIntro
             stepNum={4}
             title="習慣カードドラフト"
-            subtitle="未来に近づくための今の習慣を選ぶ"
-            description={`5枚配布 → 1枚選んで右隣に渡す、を3回繰り返して合計3枚獲得。自分の未来カードを思い出しながら選んでください。`}
+            subtitle="未来を実現するためのアクションを選ぶ"
+            description="5枚配布 → 1枚選んで右隣に渡す、を3回繰り返して合計3枚獲得。自分の未来カードを思い出しながら（クリックで詳細表示できます）、近づくためのアクションを選んでください。"
             onStart={startHabitDraft}
             color="from-emerald-400 to-teal-400"
           />
@@ -352,7 +360,6 @@ export default function Page() {
         {phase === 'habitDraft' && habitDraftState && (
           <HabitDraftStage
             state={habitDraftState}
-            players={players}
             humanFutureHand={players[HUMAN_IDX].futureHand}
             onPick={handleHabitPick}
           />
@@ -407,7 +414,7 @@ export default function Page() {
       </div>
 
       <footer className="text-center text-xs text-stone-400 mt-12 pb-4">
-        人生ドラフト Web Simulator v1.1 (NPC mode) / © Color Variation
+        人生ドラフト Web Simulator v1.2 / © Color Variation
       </footer>
     </main>
   );
@@ -543,10 +550,9 @@ function StepIntro({
 // FUTURE DRAFT STAGE
 // ============================================================
 function FutureDraftStage({
-  state, players, onPick,
+  state, onPick,
 }: {
   state: FutureDraftState;
-  players: Player[];
   onPick: (idx: number) => void;
 }) {
   const humanHand = state.hands[HUMAN_IDX];
@@ -554,7 +560,7 @@ function FutureDraftStage({
 
   return (
     <div className="py-4">
-      <div className="flex justify-center gap-2 mb-3">
+      <div className="flex justify-center gap-2 mb-3 flex-wrap">
         <Badge label={`ラウンド ${state.round} / ${FUTURE_ROUNDS}`} color="bg-rose-500" />
         <Badge label={`選択 ${state.subRound} / ${FUTURE_SUBROUNDS}`} color="bg-amber-500" />
         <Badge label={`累計 ${totalPicks} / 9`} color="bg-stone-700" />
@@ -663,22 +669,22 @@ function NarrowStage({
 }
 
 // ============================================================
-// HABIT DRAFT STAGE
+// HABIT DRAFT STAGE (with clickable future cards)
 // ============================================================
 function HabitDraftStage({
-  state, players, humanFutureHand, onPick,
+  state, humanFutureHand, onPick,
 }: {
   state: HabitDraftState;
-  players: Player[];
   humanFutureHand: FutureCard[];
   onPick: (idx: number) => void;
 }) {
   const humanHand = state.hands[HUMAN_IDX];
   const totalPicks = state.picks[HUMAN_IDX].length;
+  const [modalCard, setModalCard] = useState<FutureCard | null>(null);
 
   return (
     <div className="py-4">
-      <div className="flex justify-center gap-2 mb-3">
+      <div className="flex justify-center gap-2 mb-3 flex-wrap">
         <Badge label={`選択 ${state.subRound} / ${HABIT_PICKS}`} color="bg-emerald-500" />
         <Badge label={`累計 ${totalPicks} / ${HABIT_PICKS}`} color="bg-stone-700" />
       </div>
@@ -690,13 +696,21 @@ function HabitDraftStage({
       </div>
 
       {humanFutureHand.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3 text-xs">
-          <div className="font-bold text-amber-900 mb-1">📌 自分の未来カード:</div>
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3">
+          <div className="font-bold text-amber-900 mb-2 text-xs">
+            📌 自分の未来カード <span className="font-normal text-amber-700">（クリックで詳細表示）</span>
+          </div>
           <div className="flex flex-wrap gap-1.5">
             {humanFutureHand.map((c) => (
-              <span key={c.code} className="bg-white px-2 py-0.5 rounded-full text-stone-700">
-                {c.icon} {c.name}
-              </span>
+              <button
+                key={c.code}
+                onClick={() => setModalCard(c)}
+                className="bg-white hover:bg-amber-100 px-3 py-1 rounded-full text-xs text-stone-700 border border-amber-200 transition cursor-pointer flex items-center gap-1"
+              >
+                <span className="text-base">{c.icon}</span>
+                <span>{c.name}</span>
+                <span className="text-amber-500 text-[10px] ml-1">▶</span>
+              </button>
             ))}
           </div>
         </div>
@@ -712,6 +726,33 @@ function HabitDraftStage({
             <HabitCardView card={card} />
           </div>
         ))}
+      </div>
+
+      {modalCard && <FutureCardModal card={modalCard} onClose={() => setModalCard(null)} />}
+    </div>
+  );
+}
+
+// ============================================================
+// FUTURE CARD MODAL (for habit draft)
+// ============================================================
+function FutureCardModal({ card, onClose }: { card: FutureCard; onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fadeIn"
+      onClick={onClose}
+    >
+      <div
+        className="max-w-md w-full"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <FutureCardView card={card} />
+        <button
+          onClick={onClose}
+          className="mt-4 w-full bg-white text-stone-800 py-3 rounded-full font-bold shadow hover:bg-stone-100 transition"
+        >
+          閉じる
+        </button>
       </div>
     </div>
   );
@@ -766,9 +807,9 @@ function HabitCardView({ card, compact = false }: { card: HabitCard; compact?: b
         <div className="font-bold text-center mb-2" style={{ color: c.dark }}>{card.name}</div>
         {!compact && (
           <>
-            <div className="text-[10px] font-bold mt-2 mb-0.5" style={{ color: c.bg }}>状況</div>
+            <div className="text-[10px] font-bold mt-2 mb-0.5" style={{ color: c.bg }}>意味 / WHY</div>
             <div className="text-xs text-stone-700 leading-relaxed mb-2">{card.sit}</div>
-            <div className="text-[10px] font-bold mb-0.5" style={{ color: c.bg }}>解決</div>
+            <div className="text-[10px] font-bold mb-0.5" style={{ color: c.bg }}>アクション / ACTION</div>
             <div className="text-xs text-stone-700 leading-relaxed">{card.sol}</div>
           </>
         )}
@@ -840,7 +881,7 @@ function HandReveal({
 }
 
 // ============================================================
-// PRESENT SCREEN
+// PRESENT SCREEN — NPCs also get presentation text
 // ============================================================
 function PresentScreen({ players, onNext }: { players: Player[]; onNext: () => void }) {
   return (
@@ -850,22 +891,44 @@ function PresentScreen({ players, onNext }: { players: Player[]; onNext: () => v
         各プレイヤーが順に「私はこんな未来を目指す」を語ります
       </p>
       <div className="bg-amber-50 rounded-2xl p-5 mb-6 shadow border border-amber-200">
-        <h3 className="font-bold text-amber-900 mb-2">💡 語りのテンプレート</h3>
-        <p className="text-stone-700 italic">「私が選んだ未来は◯◯、◯◯、◯◯、◯◯、◯◯です。なぜなら……」</p>
+        <h3 className="font-bold text-amber-900 mb-2">💡 あなたの語りのテンプレート</h3>
+        <p className="text-stone-700 italic text-sm">
+          「私が選んだ未来は◯◯、◯◯、◯◯、◯◯、◯◯です。なぜなら……」
+        </p>
       </div>
-      <div className="grid gap-3 mb-8">
-        {players.map((p, i) => (
-          <div key={p.name} className="bg-white rounded-xl p-3 shadow flex items-center gap-3">
-            <div className="w-10 h-10 bg-stone-200 rounded-full flex items-center justify-center font-bold text-stone-700">{i + 1}</div>
-            <div className="font-bold text-stone-800">
-              {p.isNPC ? '🤖' : '👤'} {p.name}
+
+      <div className="space-y-4 mb-8">
+        {players.map((p, i) => {
+          const presentText = generatePresentation(p.futureHand, i);
+          return (
+            <div key={p.name} className="bg-white rounded-2xl p-4 shadow border border-stone-100">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-9 h-9 bg-stone-200 rounded-full flex items-center justify-center font-bold text-stone-700 text-sm">{i + 1}</div>
+                <div className="font-bold text-stone-800 flex-1">
+                  {p.isNPC ? '🤖' : '👤'} {p.name}
+                </div>
+                <div className="flex flex-wrap gap-0.5">
+                  {p.futureHand.map((c) => (<span key={c.code} className="text-lg">{c.icon}</span>))}
+                </div>
+              </div>
+              <div className="bg-stone-50 rounded-xl p-3">
+                <p className="text-sm text-stone-700 leading-relaxed">
+                  {p.isNPC ? (
+                    <span>「{presentText}」</span>
+                  ) : (
+                    <span className="text-stone-500 italic">
+                      あなたの番です。手元のカードを並べて、上のテンプレートを参考に語ってみてください。
+                      <br />
+                      <span className="text-xs">（参考: 「{presentText}」のように語れます）</span>
+                    </span>
+                  )}
+                </p>
+              </div>
             </div>
-            <div className="ml-auto flex flex-wrap gap-1">
-              {p.futureHand.map((c) => (<span key={c.code} className="text-lg">{c.icon}</span>))}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
+
       <div className="text-center">
         <button onClick={onNext} className="bg-amber-500 text-white py-3 px-10 rounded-full font-bold shadow hover:bg-amber-600 transition">
           全員のプレゼンが終わった ▶
@@ -1136,8 +1199,9 @@ function SummaryScreen({
       </div>
 
       <div className="space-y-6">
-        {players.map((p) => {
+        {players.map((p, i) => {
           const pAwards = awardResults.filter((r) => r.winner === p.name);
+          const presentText = generatePresentation(p.futureHand, i);
           return (
             <div key={p.name} className="bg-white rounded-2xl p-5 shadow-lg">
               <div className="flex items-center gap-3 mb-4 pb-3 border-b">
@@ -1160,6 +1224,11 @@ function SummaryScreen({
                   </div>
                 </div>
               )}
+
+              <div className="mb-4 bg-stone-50 rounded-xl p-3">
+                <div className="text-xs font-bold text-stone-500 mb-1">💬 プレゼン</div>
+                <p className="text-sm text-stone-700 leading-relaxed">「{presentText}」</p>
+              </div>
 
               <div className="mb-4">
                 <div className="text-xs font-bold text-stone-500 mb-2">🌈 選んだ未来（5枚）</div>

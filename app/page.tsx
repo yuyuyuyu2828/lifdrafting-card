@@ -132,6 +132,8 @@ export default function Page() {
   const [habitDraftState, setHabitDraftState] = useState<HabitDraftState | null>(null);
   const [currentAwardIdx, setCurrentAwardIdx] = useState(0);
   const [awardResults, setAwardResults] = useState<AwardResult[]>([]);
+  const [transition, setTransition] = useState<'pass' | 'newRound' | null>(null);
+  const [transitionInfo, setTransitionInfo] = useState<{ count: number; nextRound?: number }>({ count: 0 });
 
   const startGame = (humanName: string) => {
     const newPlayers: Player[] = [
@@ -170,27 +172,41 @@ export default function Page() {
     );
 
     if (futureDraftState.subRound < FUTURE_SUBROUNDS) {
-      setFutureDraftState({
-        ...futureDraftState,
-        hands: newHands,
-        picks: newPicks,
-        subRound: futureDraftState.subRound + 1,
-      });
+      // Show passing animation, then advance
+      setTransitionInfo({ count: newHands[HUMAN_IDX].length });
+      setTransition('pass');
+      const savedState = futureDraftState;
+      setTimeout(() => {
+        setTransition(null);
+        setFutureDraftState({
+          ...savedState,
+          hands: newHands,
+          picks: newPicks,
+          subRound: savedState.subRound + 1,
+        });
+      }, 1600);
     } else {
       if (futureDraftState.round < FUTURE_ROUNDS) {
-        const discards = newHands.flat();
-        const newDeck = shuffle([...futureDraftState.deck, ...discards]);
-        const dealHands = Array.from({ length: N_PLAYERS }, (_, i) =>
-          newDeck.slice(i * 5, i * 5 + 5)
-        );
-        setFutureDraftState({
-          ...futureDraftState,
-          round: futureDraftState.round + 1,
-          subRound: 1,
-          hands: dealHands,
-          picks: newPicks,
-          deck: newDeck.slice(N_PLAYERS * 5),
-        });
+        // Round transition animation, then deal new cards
+        const savedState = futureDraftState;
+        setTransitionInfo({ count: 5, nextRound: savedState.round + 1 });
+        setTransition('newRound');
+        setTimeout(() => {
+          setTransition(null);
+          const discards = newHands.flat();
+          const newDeck = shuffle([...savedState.deck, ...discards]);
+          const dealHands = Array.from({ length: N_PLAYERS }, (_, i) =>
+            newDeck.slice(i * 5, i * 5 + 5)
+          );
+          setFutureDraftState({
+            ...savedState,
+            round: savedState.round + 1,
+            subRound: 1,
+            hands: dealHands,
+            picks: newPicks,
+            deck: newDeck.slice(N_PLAYERS * 5),
+          });
+        }, 2000);
       } else {
         setPlayers((prev) =>
           prev.map((p, i) => ({ ...p, futureDraft: newPicks[i] }))
@@ -229,12 +245,19 @@ export default function Page() {
     );
 
     if (habitDraftState.subRound < HABIT_PICKS) {
-      setHabitDraftState({
-        ...habitDraftState,
-        hands: newHands,
-        picks: newPicks,
-        subRound: habitDraftState.subRound + 1,
-      });
+      // Passing animation between sub-rounds
+      setTransitionInfo({ count: newHands[HUMAN_IDX].length });
+      setTransition('pass');
+      const savedState = habitDraftState;
+      setTimeout(() => {
+        setTransition(null);
+        setHabitDraftState({
+          ...savedState,
+          hands: newHands,
+          picks: newPicks,
+          subRound: savedState.subRound + 1,
+        });
+      }, 1600);
     } else {
       setPlayers((prev) => prev.map((p, i) => ({ ...p, habitHand: newPicks[i] })));
       setHabitDraftState(null);
@@ -419,8 +442,20 @@ export default function Page() {
       </div>
 
       <footer className="text-center text-xs text-stone-400 mt-12 pb-4">
-        人生ドラフト Web Simulator v1.4 / © Color Variation
+        人生ドラフト Web Simulator v1.5 / © Color Variation
       </footer>
+
+      {/* Transition overlays */}
+      {transition === 'pass' && (
+        <PassAnimation
+          players={players}
+          humanIdx={HUMAN_IDX}
+          count={transitionInfo.count}
+        />
+      )}
+      {transition === 'newRound' && (
+        <NewRoundAnimation nextRound={transitionInfo.nextRound ?? 1} />
+      )}
     </main>
   );
 }
@@ -863,6 +898,86 @@ function HabitDraftStage({
       </div>
 
       {modalCard && <FutureCardModal card={modalCard} onClose={() => setModalCard(null)} />}
+    </div>
+  );
+}
+
+// ============================================================
+// PASS / NEW ROUND ANIMATIONS
+// ============================================================
+function PassAnimation({ players, humanIdx, count }: {
+  players: Player[];
+  humanIdx: number;
+  count: number;
+}) {
+  const leftName = players[(humanIdx - 1 + players.length) % players.length].name.replace('(NPC)', '');
+  const rightName = players[(humanIdx + 1) % players.length].name.replace('(NPC)', '');
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center backdrop-blur-sm p-4">
+      <div className="bg-white rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl">
+        <div className="text-center mb-5">
+          <div className="text-6xl mb-3 inline-block animate-bounce">🔄</div>
+          <h3 className="text-xl md:text-2xl font-bold text-stone-800 mb-1">
+            カードを交換中...
+          </h3>
+          <p className="text-xs text-stone-500 leading-relaxed">
+            全員が同時に「残った手札を右隣に渡し、<br/>左隣から新しい手札を受け取る」
+          </p>
+        </div>
+
+        <div className="bg-stone-50 rounded-2xl p-3 mb-4 overflow-x-auto">
+          <div className="flex items-center justify-center gap-1 min-w-max">
+            {players.map((p, i) => (
+              <div key={p.name} className="flex items-center gap-1">
+                <div className={`text-center px-2 py-2 rounded-lg ${i === humanIdx ? 'bg-rose-100 ring-2 ring-rose-400' : 'bg-white border border-stone-200'}`}>
+                  <div className="text-2xl leading-none">{p.isNPC ? '🤖' : '👤'}</div>
+                  <div className="text-[9px] font-bold text-stone-700 whitespace-nowrap mt-1">
+                    {p.name.replace('(NPC)','')}
+                  </div>
+                </div>
+                <div className="text-xl text-rose-500 animate-pulse">→</div>
+              </div>
+            ))}
+            <div className="text-base text-stone-400">↺</div>
+          </div>
+          <div className="text-[10px] text-center text-stone-500 mt-1">↺ 最後の人は最初の人へ</div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          <div className="bg-rose-50 rounded-xl p-3 border border-rose-200 text-center">
+            <div className="text-[10px] text-rose-700 font-bold mb-0.5">→ 右隣へ</div>
+            <div className="font-bold text-stone-800">{rightName}</div>
+          </div>
+          <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-200 text-center">
+            <div className="text-[10px] text-emerald-700 font-bold mb-0.5">← 左隣から</div>
+            <div className="font-bold text-stone-800">{leftName}</div>
+            <div className="text-xs text-emerald-700 mt-0.5">{count}枚 ✨</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NewRoundAnimation({ nextRound }: { nextRound: number }) {
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center backdrop-blur-sm p-4">
+      <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl text-center">
+        <div className="text-6xl mb-4 inline-block animate-bounce">🎴</div>
+        <h3 className="text-2xl font-bold text-stone-800 mb-3">
+          ラウンド完了！
+        </h3>
+        <p className="text-stone-600 mb-4 leading-relaxed text-sm">
+          残った手札はデッキへ戻ります。<br/>
+          ラウンド <span className="font-bold text-rose-500 text-lg">{nextRound}</span> の新しい5枚を配ります...
+        </p>
+        <div className="flex items-center justify-center gap-1">
+          <span className="inline-block w-2 h-2 bg-rose-400 rounded-full animate-bounce"></span>
+          <span className="inline-block w-2 h-2 bg-amber-400 rounded-full animate-bounce" style={{ animationDelay: '0.15s' }}></span>
+          <span className="inline-block w-2 h-2 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }}></span>
+        </div>
+      </div>
     </div>
   );
 }

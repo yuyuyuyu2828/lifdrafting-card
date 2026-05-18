@@ -279,7 +279,7 @@ export default function Page() {
             title="未来カードドラフト"
             subtitle="3ラウンドで9枚をドラフト → 5枚に絞る"
             description="各ラウンドで5枚配布→1枚選んで右隣に残りを渡す、を3回繰り返して3枚獲得。これを3ラウンド行って合計9枚を集めます。最後に「特に実現したい5枚」に絞り込んでください。"
-            criteria="実現可能性は考えなくてOK。「今の自分に響くか」「いいなと感じるか」で直感的に選んでください。"
+            criteria="こんな未来に心が動くかで直感的に選んでください。"
             onStart={startFutureDraft}
             color="from-rose-400 to-orange-400"
           />
@@ -419,7 +419,7 @@ export default function Page() {
       </div>
 
       <footer className="text-center text-xs text-stone-400 mt-12 pb-4">
-        人生ドラフト Web Simulator v1.3 / © Color Variation
+        人生ドラフト Web Simulator v1.4 / © Color Variation
       </footer>
     </main>
   );
@@ -1327,22 +1327,191 @@ function SummaryScreen({
   players.forEach((p) => (ptTotal[p.name] = 0));
   awardResults.forEach((r) => { if (r.winner) ptTotal[r.winner] += TIER_POINTS[r.award.tier]; });
 
+  const humanRef = useRef<HTMLDivElement>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  const humanPlayer = players[HUMAN_IDX];
+  const humanAwards = awardResults.filter((r) => r.winner === humanPlayer.name);
+  const humanPresentText = generatePresentation(humanPlayer.futureHand, HUMAN_IDX);
+  const humanPt = ptTotal[humanPlayer.name];
+
+  async function handleDownloadPDF() {
+    if (!humanRef.current || pdfLoading) return;
+    setPdfLoading(true);
+    try {
+      const html2canvasMod = await import('html2canvas-pro');
+      const html2canvas = html2canvasMod.default;
+      const jsPDFMod = await import('jspdf');
+      const { jsPDF } = jsPDFMod;
+
+      const canvas = await html2canvas(humanRef.current, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        logging: false,
+        useCORS: true,
+      });
+
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = 210;
+      const pdfHeight = 297;
+      const imgWidth = pdfWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      const imgData = canvas.toDataURL('image/png');
+
+      let heightLeft = imgHeight;
+      let position = 0;
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pdfHeight;
+
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pdfHeight;
+      }
+
+      const today = new Date().toISOString().slice(0, 10);
+      const safeName = humanPlayer.name.replace(/[\\/:*?"<>|]/g, '_');
+      pdf.save(`life-draft_${safeName}_${today}.pdf`);
+    } catch (err) {
+      console.error('PDF generation failed:', err);
+      alert('PDFの生成に失敗しました。もう一度お試しください。');
+    } finally {
+      setPdfLoading(false);
+    }
+  }
+
+  const npcPlayers = players.map((p, i) => ({ p, i })).filter(({ i }) => i !== HUMAN_IDX);
+
   return (
     <div className="py-6">
-      <div className="text-center mb-8">
+      <div className="text-center mb-6">
         <div className="text-5xl mb-2">🎊</div>
         <h2 className="text-3xl md:text-4xl font-bold text-stone-800 mb-2">セッション終了！</h2>
         <p className="text-stone-600">お疲れさまでした</p>
       </div>
 
+      {/* PDF DOWNLOAD BUTTON */}
+      <div className="text-center mb-6">
+        <button
+          onClick={handleDownloadPDF}
+          disabled={pdfLoading}
+          className={`inline-flex items-center gap-2 px-6 py-3 rounded-full font-bold shadow-lg transition ${
+            pdfLoading
+              ? 'bg-stone-300 text-stone-500 cursor-not-allowed'
+              : 'bg-rose-500 text-white hover:bg-rose-600 hover:shadow-xl'
+          }`}
+        >
+          {pdfLoading ? (
+            <>
+              <span className="inline-block w-4 h-4 border-2 border-stone-500 border-t-transparent rounded-full animate-spin"></span>
+              PDF生成中...
+            </>
+          ) : (
+            <>📄 あなたの結果をPDFでダウンロード</>
+          )}
+        </button>
+        <p className="text-xs text-stone-400 mt-2">あなた（{humanPlayer.name}）の選択をA4 PDFとして保存できます</p>
+      </div>
+
       <div className="space-y-6">
-        {players.map((p, i) => {
+        {/* HUMAN PLAYER — captured by ref for PDF */}
+        <div ref={humanRef} className="bg-white rounded-2xl p-5 shadow-lg border-2 border-rose-300">
+          <div className="text-center mb-4 pb-3 border-b">
+            <div className="text-xs text-stone-500 tracking-widest mb-1">LIFE DRAFT — YOUR RESULTS</div>
+            <div className="text-lg font-bold text-stone-800">👤 {humanPlayer.name}</div>
+            <div className="text-xs text-stone-500 mt-1">{new Date().toLocaleDateString('ja-JP')}</div>
+            <div className="inline-block mt-2 bg-amber-100 text-amber-800 px-4 py-1 rounded-full text-sm font-bold">
+              受賞ポイント: {humanPt} pt
+            </div>
+          </div>
+
+          {humanAwards.length > 0 && (
+            <div className="mb-4">
+              <div className="text-xs font-bold text-stone-500 mb-2">🏆 受賞</div>
+              <div className="flex flex-wrap gap-2">
+                {humanAwards.map((r) => (
+                  <span key={r.award.code} className="text-sm px-3 py-1 bg-amber-50 border border-amber-200 rounded-full">
+                    {r.award.icon} {r.award.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="mb-4 bg-stone-50 rounded-xl p-3">
+            <div className="text-xs font-bold text-stone-500 mb-1">💬 プレゼン（参考）</div>
+            <p className="text-sm text-stone-700 leading-relaxed">「{humanPresentText}」</p>
+          </div>
+
+          <div className="mb-4">
+            <div className="text-xs font-bold text-stone-500 mb-2">🌈 選んだ未来（5枚）</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {humanPlayer.futureHand.map((c) => (<FutureCardView key={c.code} card={c} />))}
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <div className="text-xs font-bold text-stone-500 mb-2">🌿 選んだ習慣（3枚）</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {humanPlayer.habitHand.map((c) => (<HabitCardView key={c.code} card={c} />))}
+            </div>
+          </div>
+
+          {(humanPlayer.edgeMap.col1 || humanPlayer.edgeMap.col2 || humanPlayer.edgeMap.col4 || humanPlayer.edges.length > 0) && (
+            <div className="mb-4 bg-indigo-50 rounded-xl p-4 border border-indigo-200">
+              <div className="text-xs font-bold text-indigo-700 mb-2 tracking-widest">🛡 エッジマップ</div>
+              <div className="space-y-2 text-sm">
+                {humanPlayer.edgeMap.col1 && (
+                  <div>
+                    <span className="text-xs font-bold text-emerald-600">1. 取り組みたい習慣:</span>
+                    <div className="text-stone-800 mt-0.5">{humanPlayer.edgeMap.col1}</div>
+                  </div>
+                )}
+                {humanPlayer.edgeMap.col2 && (
+                  <div>
+                    <span className="text-xs font-bold text-amber-600">2. やれていない行動:</span>
+                    <div className="text-stone-800 mt-0.5 whitespace-pre-line">{humanPlayer.edgeMap.col2}</div>
+                  </div>
+                )}
+                {humanPlayer.edges.length > 0 && (
+                  <div>
+                    <span className="text-xs font-bold text-purple-600">3. 守ろうとしているもの:</span>
+                    <div className="mt-0.5 space-y-1">
+                      {humanPlayer.edges.map((e) => (
+                        <div key={e.code} className="text-stone-800 text-xs">
+                          ・<span className="font-bold">{e.surface}</span> → {e.hidden}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {humanPlayer.edgeMap.col4 && (
+                  <div>
+                    <span className="text-xs font-bold text-rose-600">4. 大きな前提:</span>
+                    <div className="text-stone-800 mt-0.5 whitespace-pre-line">{humanPlayer.edgeMap.col4}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {humanPlayer.edgeMap.next && (
+            <div className="bg-gradient-to-br from-indigo-100 to-purple-100 rounded-xl p-4 border-2 border-indigo-300">
+              <div className="text-xs font-bold text-indigo-700 mb-1">⭐ 明日から試す1ステップ</div>
+              <div className="text-base text-stone-800 whitespace-pre-line font-bold">{humanPlayer.edgeMap.next}</div>
+            </div>
+          )}
+        </div>
+
+        {/* NPC PLAYERS — full card details, not in PDF */}
+        {npcPlayers.map(({ p, i }) => {
           const pAwards = awardResults.filter((r) => r.winner === p.name);
           const presentText = generatePresentation(p.futureHand, i);
           return (
             <div key={p.name} className="bg-white rounded-2xl p-5 shadow-lg">
               <div className="flex items-center gap-3 mb-4 pb-3 border-b">
-                <div className="text-2xl">{p.isNPC ? '🤖' : '👤'}</div>
+                <div className="text-2xl">🤖</div>
                 <h3 className="text-xl font-bold text-stone-800">{p.name}</h3>
                 <div className="ml-auto bg-amber-100 text-amber-800 px-3 py-1 rounded-full text-sm font-bold">
                   {ptTotal[p.name]} pt
@@ -1369,24 +1538,17 @@ function SummaryScreen({
 
               <div className="mb-4">
                 <div className="text-xs font-bold text-stone-500 mb-2">🌈 選んだ未来（5枚）</div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-5 gap-2">
-                  {p.futureHand.map((c) => (<FutureCardView key={c.code} card={c} compact />))}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {p.futureHand.map((c) => (<FutureCardView key={c.code} card={c} />))}
                 </div>
               </div>
 
               <div className="mb-4">
                 <div className="text-xs font-bold text-stone-500 mb-2">🌿 選んだ習慣（3枚）</div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  {p.habitHand.map((c) => (<HabitCardView key={c.code} card={c} compact />))}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {p.habitHand.map((c) => (<HabitCardView key={c.code} card={c} />))}
                 </div>
               </div>
-
-              {!p.isNPC && p.edgeMap.next && (
-                <div className="bg-indigo-50 rounded-xl p-3 border border-indigo-200">
-                  <div className="text-xs font-bold text-indigo-700 mb-1">⭐ 明日から試す1ステップ</div>
-                  <div className="text-sm text-stone-800 whitespace-pre-line">{p.edgeMap.next}</div>
-                </div>
-              )}
             </div>
           );
         })}

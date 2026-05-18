@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   FUTURE_CARDS, HABIT_CARDS, EDGE_CARDS, AWARD_CARDS,
   FUTURE_CAT_LABEL, HABIT_CAT_LABEL, FUTURE_CAT_COLOR, HABIT_CAT_COLOR,
@@ -21,7 +21,7 @@ const EDGE_PICK_MAX = 3;
 
 // ============= TYPES =============
 type Phase =
-  | 'home' | 'setup'
+  | 'home' | 'rules' | 'setup'
   | 'futureIntro' | 'futureDraft' | 'futureNarrow'
   | 'futureReveal'
   | 'present'
@@ -269,8 +269,9 @@ export default function Page() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-amber-50 via-rose-50 to-sky-50 p-4 md:p-8">
       <div className="max-w-5xl mx-auto">
-        {phase === 'home' && <HomeScreen onStart={() => setPhase('setup')} />}
-        {phase === 'setup' && <SetupScreen onStart={startGame} onBack={() => setPhase('home')} />}
+        {phase === 'home' && <HomeScreen onStart={() => setPhase('rules')} />}
+        {phase === 'rules' && <RulesScreen onNext={() => setPhase('setup')} onBack={() => setPhase('home')} />}
+        {phase === 'setup' && <SetupScreen onStart={startGame} onBack={() => setPhase('rules')} />}
 
         {phase === 'futureIntro' && (
           <StepIntro
@@ -278,6 +279,7 @@ export default function Page() {
             title="未来カードドラフト"
             subtitle="3ラウンドで9枚をドラフト → 5枚に絞る"
             description="各ラウンドで5枚配布→1枚選んで右隣に残りを渡す、を3回繰り返して3枚獲得。これを3ラウンド行って合計9枚を集めます。最後に「特に実現したい5枚」に絞り込んでください。"
+            criteria="実現可能性は考えなくてOK。「今の自分に響くか」「いいなと感じるか」で直感的に選んでください。"
             onStart={startFutureDraft}
             color="from-rose-400 to-orange-400"
           />
@@ -323,6 +325,7 @@ export default function Page() {
             title="未来への受賞投票"
             subtitle="お互いの未来に賞を贈り合う"
             description="8つの賞をひとつずつ提示します。あなたが「この賞は誰?」と思う人を選んでください。NPCは自動で投票します。"
+            criteria="プレゼン内容を思い出して『この賞はこの人にピッタリ』と感じた人を直感で選んでください。考えすぎず、響いた相手に贈るのがコツです。"
             onStart={() => setPhase('voting')}
             color="from-amber-400 to-yellow-300"
           />
@@ -351,7 +354,8 @@ export default function Page() {
             stepNum={4}
             title="習慣カードドラフト"
             subtitle="未来を実現するためのアクションを選ぶ"
-            description="5枚配布 → 1枚選んで右隣に渡す、を3回繰り返して合計3枚獲得。自分の未来カードを思い出しながら（クリックで詳細表示できます）、近づくためのアクションを選んでください。"
+            description="5枚配布 → 1枚選んで右隣に渡す、を3回繰り返して合計3枚獲得。ドラフト中、画面上部の未来カードをクリックすると内容を見返せます。"
+            criteria="自分の未来カードに近づくためのアクションを選びましょう。「これが続いたら、あの未来に1歩近づく」と思える1枚を。"
             onStart={startHabitDraft}
             color="from-emerald-400 to-teal-400"
           />
@@ -380,6 +384,7 @@ export default function Page() {
             title="エッジマップワーク"
             subtitle="「やりたいのにできない」の奥を見る"
             description="習慣を続けたいのに、つい後回しになる。その奥には合理的な「守りのシステム」が働いています。4つの問いに答えて、自分のエッジを言語化しましょう。（NPCは省略します）"
+            criteria="正解はありません。書きながら自分の中の本音に気づくことが目的のワークです。完璧に書こうとせず、思いついたままでOK。"
             onStart={() => setPhase('edgeMap')}
             color="from-indigo-500 to-slate-700"
           />
@@ -414,7 +419,7 @@ export default function Page() {
       </div>
 
       <footer className="text-center text-xs text-stone-400 mt-12 pb-4">
-        人生ドラフト Web Simulator v1.2 / © Color Variation
+        人生ドラフト Web Simulator v1.3 / © Color Variation
       </footer>
     </main>
   );
@@ -514,15 +519,126 @@ function SetupScreen({ onStart, onBack }: { onStart: (name: string) => void; onB
 }
 
 // ============================================================
+// RULES SCREEN (初プレイヤー向けゲーム説明)
+// ============================================================
+function RulesScreen({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
+  const steps = [
+    {
+      no: 1, color: 'from-rose-400 to-orange-400', icon: '🌈',
+      title: '未来カードドラフト（5分）',
+      desc: '配られた5枚から1枚選んで右隣に残りを渡す → これを繰り返して合計9枚を集めます。',
+      tip: '実現可能性は考えなくてOK。「今の自分に響くか」「いいなと感じるか」で直感的に選んでください。',
+    },
+    {
+      no: 2, color: 'from-rose-500 to-amber-500', icon: '✨',
+      title: '9枚から5枚に絞る（2分）',
+      desc: '集めた9枚を見比べて、「特に実現したい」5枚に絞り込みます。',
+      tip: '優先順位を意識して、本当に大事だと思うものを残しましょう。',
+    },
+    {
+      no: 3, color: 'from-amber-400 to-yellow-300', icon: '🎤',
+      title: 'プレゼン＋受賞投票（5分）',
+      desc: '各プレイヤーが自分の未来を1〜2分で語り、8つの賞をお互いに贈り合います。',
+      tip: 'プレゼンを聞いて「この賞はこの人にピッタリ」と感じた人を直感で選んでください。',
+    },
+    {
+      no: 4, color: 'from-emerald-400 to-teal-400', icon: '🌿',
+      title: '習慣カードドラフト（3分）',
+      desc: '未来に近づくための「今のアクション」を3枚選びます。同じドラフト方式で進めます。',
+      tip: '自分が選んだ未来カードを思い出しながら、それに近づくアクションを選んでください。',
+    },
+    {
+      no: 5, color: 'from-indigo-500 to-slate-700', icon: '🛡',
+      title: 'エッジマップワーク（5分）',
+      desc: '「やりたいのにできない」の奥に何があるか、4つの問いで自分を見つめるワーク。',
+      tip: '正解はありません。書きながら自分の本音に気づくことが目的です。',
+    },
+  ];
+
+  return (
+    <div className="py-6">
+      <div className="text-center mb-6">
+        <div className="text-5xl mb-2">📖</div>
+        <h2 className="text-3xl md:text-4xl font-bold text-stone-800 mb-2">ゲームのルール</h2>
+        <p className="text-stone-600">初めての方も、まずはここを読めばOK</p>
+      </div>
+
+      {/* What is this game */}
+      <div className="bg-white rounded-2xl shadow-lg p-6 mb-5">
+        <h3 className="font-bold text-stone-800 text-lg mb-2">🎴 どんなゲーム?</h3>
+        <p className="text-stone-700 leading-relaxed">
+          人生で選びたい <span className="font-bold text-rose-500">「未来」</span> と、それを実現する <span className="font-bold text-emerald-500">「習慣」</span> を、4人（あなた＋NPC3人）でドラフト形式で取り合います。お互いの選択を語り合い、賞を贈り合うことで、自分の人生観が浮かび上がってきます。
+        </p>
+        <p className="text-stone-600 leading-relaxed mt-2 text-sm">
+          所要時間: <span className="font-bold">約15〜20分</span> / プレイ人数: あなた1人 + NPC3人
+        </p>
+      </div>
+
+      {/* Steps */}
+      <div className="bg-white rounded-2xl shadow-lg p-6 mb-5">
+        <h3 className="font-bold text-stone-800 text-lg mb-4">📋 ゲームの流れ</h3>
+        <div className="space-y-4">
+          {steps.map((s) => (
+            <div key={s.no} className="border-l-4 pl-4" style={{ borderColor: s.no === 1 ? '#ea545f' : s.no === 2 ? '#efad1d' : s.no === 3 ? '#f59e0b' : s.no === 4 ? '#10b981' : '#6366f1' }}>
+              <div className="flex items-center gap-2 mb-1">
+                <span className={`bg-gradient-to-r ${s.color} text-white text-xs font-bold px-2 py-0.5 rounded-full`}>STEP {s.no}</span>
+                <span className="text-lg">{s.icon}</span>
+                <span className="font-bold text-stone-800">{s.title}</span>
+              </div>
+              <p className="text-sm text-stone-700 leading-relaxed mb-1">{s.desc}</p>
+              <p className="text-xs text-stone-500 leading-relaxed bg-amber-50 px-2 py-1 rounded">
+                <span className="font-bold text-amber-700">💡 選び方:</span> {s.tip}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Mindset */}
+      <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl shadow-lg p-6 mb-5 border-2 border-indigo-100">
+        <h3 className="font-bold text-stone-800 text-lg mb-3">🌟 大事な3つのこと</h3>
+        <ul className="space-y-2 text-stone-700">
+          <li className="flex gap-2">
+            <span className="text-indigo-500 font-bold">①</span>
+            <span><b>「正解はない」</b> ── 考えすぎず、直感で選んでOK</span>
+          </li>
+          <li className="flex gap-2">
+            <span className="text-indigo-500 font-bold">②</span>
+            <span><b>他の人の選択も全部「その人らしさ」</b> ── 比較せず、それぞれの未来を尊重</span>
+          </li>
+          <li className="flex gap-2">
+            <span className="text-indigo-500 font-bold">③</span>
+            <span><b>勝ち負けは目的じゃない</b> ── 自分の人生観が見えることが目的</span>
+          </li>
+        </ul>
+      </div>
+
+      <div className="flex gap-3">
+        <button onClick={onBack} className="px-6 py-3 bg-stone-200 text-stone-700 rounded-full font-bold hover:bg-stone-300 transition">
+          ← 戻る
+        </button>
+        <button
+          onClick={onNext}
+          className="flex-1 bg-gradient-to-r from-rose-500 to-amber-500 text-white py-3 rounded-full font-bold shadow hover:shadow-lg transition"
+        >
+          わかった、始める ▶
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // STEP INTRO
 // ============================================================
 function StepIntro({
-  stepNum, title, subtitle, description, onStart, color,
+  stepNum, title, subtitle, description, criteria, onStart, color,
 }: {
   stepNum: number;
   title: string;
   subtitle: string;
   description: string;
+  criteria?: string;
   onStart: () => void;
   color: string;
 }) {
@@ -533,9 +649,16 @@ function StepIntro({
       </div>
       <h2 className="text-3xl md:text-4xl font-bold text-stone-800 mb-2">{title}</h2>
       <p className="text-lg text-stone-600 mb-6">{subtitle}</p>
-      <div className="bg-white/80 rounded-2xl p-6 max-w-2xl mx-auto mb-8 shadow text-left">
+      <div className="bg-white/80 rounded-2xl p-6 max-w-2xl mx-auto mb-4 shadow text-left">
+        <div className="text-xs font-bold text-stone-500 mb-1 tracking-widest">▼ ルール</div>
         <p className="text-stone-700 leading-relaxed">{description}</p>
       </div>
+      {criteria && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 max-w-2xl mx-auto mb-8 shadow text-left">
+          <div className="text-xs font-bold text-amber-700 mb-1 tracking-widest">💡 選び方のコツ</div>
+          <p className="text-stone-700 leading-relaxed">{criteria}</p>
+        </div>
+      )}
       <button
         onClick={onStart}
         className={`bg-gradient-to-r ${color} text-white text-lg font-bold py-3 px-10 rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition`}
@@ -573,6 +696,10 @@ function FutureDraftStage({
         <p className="text-xs text-stone-500 mt-1">
           選んだ1枚はあなたの手札に。残りは右隣のNPCに渡されます
         </p>
+      </div>
+
+      <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 mb-3 text-xs text-rose-900">
+        <span className="font-bold">💡 選び方のヒント:</span> 直感で「これ、いいな」と思う1枚を選んでください。考えすぎないのがコツ。
       </div>
 
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-2 mb-3 text-xs">
@@ -633,6 +760,9 @@ function NarrowStage({
         <p className="text-3xl font-bold text-stone-800 mt-1">
           {selected.length} / {FUTURE_NARROW}
         </p>
+        <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 mt-4 mx-auto max-w-xl text-xs text-rose-900 text-left">
+          <span className="font-bold">💡 絞り方のヒント:</span> 9枚を見比べて「本当に実現したい」と感じる5枚を選びましょう。優先順位を意識する時間です。
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mb-6">
@@ -693,6 +823,10 @@ function HabitDraftStage({
         <p className="text-sm text-stone-600">
           {humanHand.length}枚の中から1枚を選んでください
         </p>
+      </div>
+
+      <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-3 text-xs text-emerald-900">
+        <span className="font-bold">💡 選び方のヒント:</span> 下の未来カード（クリックで詳細表示）を思い出しながら、「これが続いたら、あの未来に1歩近づく」と思える習慣を選んでください。
       </div>
 
       {humanFutureHand.length > 0 && (
@@ -966,7 +1100,10 @@ function VotingStage({
       </div>
 
       <div className="bg-white rounded-2xl p-4 shadow">
-        <h3 className="font-bold text-stone-700 mb-3 text-sm">▼ あなたの投票: この賞は誰?</h3>
+        <h3 className="font-bold text-stone-700 mb-2 text-sm">▼ あなたの投票: この賞は誰?</h3>
+        <p className="text-xs text-stone-500 mb-3">
+          💡 プレゼンを思い出して「この賞はこの人だ」と感じた人を直感で選んでください。自分自身に投票してもOK。
+        </p>
         <div className="flex flex-wrap gap-2 justify-center">
           {players.map((p) => (
             <button

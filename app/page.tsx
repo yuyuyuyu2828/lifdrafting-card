@@ -442,7 +442,7 @@ export default function Page() {
       </div>
 
       <footer className="text-center text-xs text-stone-400 mt-12 pb-4">
-        人生ドラフト Web Simulator v1.5 / © Color Variation
+        人生ドラフト Web Simulator v1.6 / © Color Variation
       </footer>
 
       {/* Transition overlays */}
@@ -1443,6 +1443,7 @@ function SummaryScreen({
   awardResults.forEach((r) => { if (r.winner) ptTotal[r.winner] += TIER_POINTS[r.award.tier]; });
 
   const humanRef = useRef<HTMLDivElement>(null);
+  const pdfRef = useRef<HTMLDivElement>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
 
   const humanPlayer = players[HUMAN_IDX];
@@ -1451,7 +1452,7 @@ function SummaryScreen({
   const humanPt = ptTotal[humanPlayer.name];
 
   async function handleDownloadPDF() {
-    if (!humanRef.current || pdfLoading) return;
+    if (!pdfRef.current || pdfLoading) return;
     setPdfLoading(true);
     try {
       const html2canvasMod = await import('html2canvas-pro');
@@ -1459,7 +1460,7 @@ function SummaryScreen({
       const jsPDFMod = await import('jspdf');
       const { jsPDF } = jsPDFMod;
 
-      const canvas = await html2canvas(humanRef.current, {
+      const canvas = await html2canvas(pdfRef.current, {
         scale: 2,
         backgroundColor: '#ffffff',
         logging: false,
@@ -1469,21 +1470,21 @@ function SummaryScreen({
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pdfWidth = 210;
       const pdfHeight = 297;
-      const imgWidth = pdfWidth;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      const imgData = canvas.toDataURL('image/png');
+      let imgWidth = pdfWidth;
+      let imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-      let heightLeft = imgHeight;
-      let position = 0;
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pdfHeight;
-
-      while (heightLeft > 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pdfHeight;
+      // Fit to single A4 page: scale by height if too tall
+      if (imgHeight > pdfHeight) {
+        imgHeight = pdfHeight;
+        imgWidth = (canvas.width * imgHeight) / canvas.height;
       }
+
+      // Center on page
+      const xOffset = (pdfWidth - imgWidth) / 2;
+      const yOffset = (pdfHeight - imgHeight) / 2;
+
+      const imgData = canvas.toDataURL('image/png');
+      pdf.addImage(imgData, 'PNG', xOffset, yOffset, imgWidth, imgHeight);
 
       const today = new Date().toISOString().slice(0, 10);
       const safeName = humanPlayer.name.replace(/[\\/:*?"<>|]/g, '_');
@@ -1673,6 +1674,294 @@ function SummaryScreen({
         <button onClick={onRestart} className="bg-stone-700 text-white py-3 px-10 rounded-full font-bold shadow hover:bg-stone-800 transition">
           もう一度遊ぶ ▶
         </button>
+      </div>
+
+      {/* Hidden PDF layout — captured for download, never visible */}
+      <PDFLayout
+        pdfRef={pdfRef}
+        player={humanPlayer}
+        awards={humanAwards}
+        points={humanPt}
+        presentText={humanPresentText}
+      />
+    </div>
+  );
+}
+
+
+// ============================================================
+// PDF LAYOUT (hidden off-screen, captured for download)
+// A4 portrait 210x297mm = 794x1123px at 96dpi
+// ============================================================
+function PDFLayout({
+  pdfRef, player, awards, points, presentText,
+}: {
+  pdfRef: React.RefObject<HTMLDivElement | null>;
+  player: Player;
+  awards: AwardResult[];
+  points: number;
+  presentText: string;
+}) {
+  const today = new Date().toLocaleDateString('ja-JP');
+
+  return (
+    <div
+      ref={pdfRef}
+      style={{
+        position: 'absolute',
+        left: '-9999px',
+        top: '0',
+        width: '780px',
+        backgroundColor: '#ffffff',
+        padding: '24px',
+        fontFamily: '"Hiragino Sans", "Yu Gothic", "Hiragino Kaku Gothic ProN", sans-serif',
+        color: '#262626',
+        boxSizing: 'border-box',
+      }}
+    >
+      {/* Header */}
+      <div style={{
+        textAlign: 'center',
+        borderBottom: '2px solid #ea545f',
+        paddingBottom: '10px',
+        marginBottom: '12px',
+      }}>
+        <div style={{ fontSize: '9px', color: '#999', letterSpacing: '0.25em', marginBottom: '4px' }}>
+          LIFE DRAFT — YOUR RESULTS
+        </div>
+        <div style={{ fontSize: '20px', fontWeight: 'bold', lineHeight: '1.2' }}>
+          👤 {player.name}
+        </div>
+        <div style={{ fontSize: '10px', color: '#999', marginTop: '4px' }}>{today}</div>
+        <div style={{
+          display: 'inline-block',
+          marginTop: '6px',
+          backgroundColor: '#fef3c7',
+          color: '#92400e',
+          padding: '4px 16px',
+          borderRadius: '9999px',
+          fontSize: '12px',
+          fontWeight: 'bold',
+        }}>
+          受賞ポイント: {points} pt
+        </div>
+      </div>
+
+      {/* Awards */}
+      {awards.length > 0 && (
+        <div style={{ marginBottom: '10px' }}>
+          <div style={{ fontSize: '10px', fontWeight: 'bold', color: '#666', marginBottom: '4px' }}>
+            🏆 受賞
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+            {awards.map((r) => (
+              <span
+                key={r.award.code}
+                style={{
+                  fontSize: '10px',
+                  padding: '2px 9px',
+                  backgroundColor: '#fef3c7',
+                  border: '1px solid #fde68a',
+                  borderRadius: '9999px',
+                }}
+              >
+                {r.award.icon} {r.award.name}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Presentation */}
+      <div style={{
+        backgroundColor: '#f5f5f4',
+        borderRadius: '8px',
+        padding: '8px 10px',
+        marginBottom: '12px',
+      }}>
+        <div style={{ fontSize: '10px', fontWeight: 'bold', color: '#666', marginBottom: '3px' }}>
+          💬 プレゼン
+        </div>
+        <div style={{ fontSize: '10px', color: '#333', lineHeight: '1.5' }}>
+          「{presentText}」
+        </div>
+      </div>
+
+      {/* Future cards */}
+      <div style={{ marginBottom: '10px' }}>
+        <div style={{ fontSize: '10px', fontWeight: 'bold', color: '#666', marginBottom: '5px' }}>
+          🌈 選んだ未来（5枚）
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '5px' }}>
+          {player.futureHand.map((c) => {
+            const col = FUTURE_CAT_COLOR[c.cat];
+            return (
+              <div key={c.code} style={{
+                border: `1.5px solid ${col.border}`,
+                background: col.bg,
+                borderRadius: '6px',
+                padding: '5px 6px',
+                overflow: 'hidden',
+              }}>
+                <div style={{ textAlign: 'center', fontSize: '16px', lineHeight: '1', marginBottom: '2px' }}>
+                  {c.icon}
+                </div>
+                <div style={{
+                  textAlign: 'center',
+                  fontSize: '10px',
+                  fontWeight: 'bold',
+                  color: col.dark,
+                  marginBottom: '3px',
+                  lineHeight: '1.2',
+                }}>
+                  {c.name}
+                </div>
+                <div style={{ fontSize: '8px', lineHeight: '1.35', color: '#333' }}>
+                  {c.desc}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Habit cards */}
+      <div style={{ marginBottom: '10px' }}>
+        <div style={{ fontSize: '10px', fontWeight: 'bold', color: '#666', marginBottom: '5px' }}>
+          🌿 選んだ習慣（3枚）
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '5px' }}>
+          {player.habitHand.map((c) => {
+            const col = HABIT_CAT_COLOR[c.cat];
+            return (
+              <div key={c.code} style={{
+                border: `1.5px solid ${col.bg}`,
+                background: '#fafaf9',
+                borderRadius: '6px',
+                padding: '5px 6px',
+                overflow: 'hidden',
+              }}>
+                <div style={{
+                  textAlign: 'center',
+                  fontSize: '10px',
+                  fontWeight: 'bold',
+                  color: col.dark,
+                  marginBottom: '4px',
+                  lineHeight: '1.2',
+                }}>
+                  {c.name}
+                </div>
+                <div style={{ fontSize: '7px', color: col.bg, fontWeight: 'bold', marginBottom: '1px' }}>意味</div>
+                <div style={{ fontSize: '8px', lineHeight: '1.35', color: '#333', marginBottom: '3px' }}>
+                  {c.sit}
+                </div>
+                <div style={{ fontSize: '7px', color: col.bg, fontWeight: 'bold', marginBottom: '1px' }}>アクション</div>
+                <div style={{ fontSize: '8px', lineHeight: '1.35', color: '#333' }}>
+                  {c.sol}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Edge map */}
+      {(player.edgeMap.col1 || player.edgeMap.col2 || player.edgeMap.col4 || player.edges.length > 0) && (
+        <div style={{
+          backgroundColor: '#eef2ff',
+          borderRadius: '8px',
+          padding: '8px 10px',
+          border: '1px solid #c7d2fe',
+          marginBottom: '8px',
+        }}>
+          <div style={{
+            fontSize: '10px',
+            fontWeight: 'bold',
+            color: '#4338ca',
+            marginBottom: '5px',
+            letterSpacing: '0.1em',
+          }}>
+            🛡 エッジマップ
+          </div>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: '8px',
+            fontSize: '9px',
+          }}>
+            {player.edgeMap.col1 && (
+              <div>
+                <div style={{ fontSize: '8px', fontWeight: 'bold', color: '#059669', marginBottom: '2px' }}>
+                  1. 取り組みたい習慣
+                </div>
+                <div style={{ color: '#333', whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>{player.edgeMap.col1}</div>
+              </div>
+            )}
+            {player.edgeMap.col2 && (
+              <div>
+                <div style={{ fontSize: '8px', fontWeight: 'bold', color: '#d97706', marginBottom: '2px' }}>
+                  2. やれていない行動
+                </div>
+                <div style={{ color: '#333', whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>{player.edgeMap.col2}</div>
+              </div>
+            )}
+            {player.edges.length > 0 && (
+              <div>
+                <div style={{ fontSize: '8px', fontWeight: 'bold', color: '#9333ea', marginBottom: '2px' }}>
+                  3. 守ろうとしているもの
+                </div>
+                {player.edges.map((e) => (
+                  <div key={e.code} style={{ color: '#333', fontSize: '8px', marginBottom: '2px', lineHeight: '1.35' }}>
+                    ・<b>{e.surface}</b> → {e.hidden}
+                  </div>
+                ))}
+              </div>
+            )}
+            {player.edgeMap.col4 && (
+              <div>
+                <div style={{ fontSize: '8px', fontWeight: 'bold', color: '#e11d48', marginBottom: '2px' }}>
+                  4. 大きな前提
+                </div>
+                <div style={{ color: '#333', whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>{player.edgeMap.col4}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Next step */}
+      {player.edgeMap.next && (
+        <div style={{
+          background: 'linear-gradient(135deg, #e0e7ff, #f3e8ff)',
+          borderRadius: '8px',
+          padding: '9px 12px',
+          border: '2px solid #a5b4fc',
+        }}>
+          <div style={{ fontSize: '9px', fontWeight: 'bold', color: '#4338ca', marginBottom: '3px' }}>
+            ⭐ 明日から試す1ステップ
+          </div>
+          <div style={{
+            fontSize: '12px',
+            fontWeight: 'bold',
+            color: '#1c1917',
+            whiteSpace: 'pre-wrap',
+            lineHeight: '1.4',
+          }}>
+            {player.edgeMap.next}
+          </div>
+        </div>
+      )}
+
+      {/* Footer */}
+      <div style={{
+        marginTop: '12px',
+        paddingTop: '8px',
+        borderTop: '1px solid #eee',
+        textAlign: 'center',
+        fontSize: '8px',
+        color: '#aaa',
+      }}>
+        LIFE DRAFT CARD GAME · 人生ドラフト · © Color Variation
       </div>
     </div>
   );
